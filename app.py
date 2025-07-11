@@ -16,9 +16,15 @@ def index():
 
 @app.route('/load-cells', methods=['GET'])
 def load_cells():
-    data = collection.find()
+    data = collection.find({"type": "cell"})
+    meta = collection.find_one({"type": "meta"})
     cell_data = {item['cell_id']: item['value'] for item in data}
-    return jsonify(cell_data)
+    response = {
+        "cells": cell_data,
+        "rows": meta['rows'] if meta else 10,
+        "columns": meta['columns'] if meta else 10
+    }
+    return jsonify(response)
 
 @app.route('/update-cell', methods=['POST'])
 def update_cell():
@@ -27,7 +33,7 @@ def update_cell():
     value = data['value']
 
     collection.update_one(
-        {"cell_id": cell_id},
+        {"cell_id": cell_id, "type": "cell"},
         {"$set": {"value": value}},
         upsert=True
     )
@@ -35,12 +41,24 @@ def update_cell():
 
 @app.route('/delete-all', methods=['POST'])
 def delete_all():
-    collection.delete_many({})
+    collection.delete_many({"type": "cell"})
     return jsonify({"status": "all_deleted"})
+
+@app.route('/update-meta', methods=['POST'])
+def update_meta():
+    data = request.get_json()
+    rows = data.get('rows')
+    columns = data.get('columns')
+    collection.update_one(
+        {"type": "meta"},
+        {"$set": {"rows": rows, "columns": columns}},
+        upsert=True
+    )
+    return jsonify({"status": "meta_updated"})
 
 @app.route('/export', methods=['GET'])
 def export_csv():
-    data = list(collection.find())
+    data = list(collection.find({"type": "cell"}))
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(['Cell ID', 'Value'])
