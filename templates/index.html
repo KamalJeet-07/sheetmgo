@@ -1,1 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flask Spreadsheet</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        td {
+            min-width: 80px;
+            height: 40px;
+            border: 1px solid #ccc;
+            text-align: center;
+        }
+        td:focus {
+            outline: 2px solid #3b82f6;
+            background-color: #eef6ff;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
 
+    <div class="p-4 max-w-6xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4 text-center">📊 Flask Spreadsheet</h1>
+        <div class="overflow-auto">
+            <table id="spreadsheet" class="table-fixed border-collapse w-full bg-white"></table>
+        </div>
+    </div>
+
+    <script>
+        const columns = 10;
+        const rows = 10;
+        const spreadsheet = document.getElementById("spreadsheet");
+
+        const columnHeaders = [''].concat([...Array(columns)].map((_, i) => String.fromCharCode(65 + i)));
+
+        function createGrid(data = {}) {
+            spreadsheet.innerHTML = '';
+
+            for (let r = 0; r <= rows; r++) {
+                const tr = document.createElement("tr");
+                for (let c = 0; c <= columns; c++) {
+                    const td = document.createElement(r === 0 || c === 0 ? "th" : "td");
+
+                    if (r === 0 && c > 0) {
+                        td.textContent = columnHeaders[c];
+                    } else if (c === 0 && r > 0) {
+                        td.textContent = r;
+                    } else if (r > 0 && c > 0) {
+                        const cellId = columnHeaders[c] + r;
+                        td.contentEditable = true;
+                        td.dataset.cellId = cellId;
+                        td.textContent = data[cellId] || "";
+
+                        td.addEventListener("blur", () => {
+                            const value = td.textContent;
+                            fetch("/update-cell", {
+                                method: "POST",
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ cell_id: cellId, value: value })
+                            });
+                        });
+                    }
+
+                    tr.appendChild(td);
+                }
+                spreadsheet.appendChild(tr);
+            }
+        }
+
+        window.onload = () => {
+            fetch("/load-cells")
+                .then(res => res.json())
+                .then(data => createGrid(data));
+        }
+    </script>
+</body>
+</html>
