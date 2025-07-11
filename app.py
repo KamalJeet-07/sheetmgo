@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-# MongoDB Atlas URI (Replace with your actual URI)
+# MongoDB Atlas URI
 uri = "mongodb://kamaljeet07:Kamal%40%23@cluster0-shard-00-00.9call.mongodb.net:27017,cluster0-shard-00-01.9call.mongodb.net:27017,cluster0-shard-00-02.9call.mongodb.net:27017/?ssl=true&replicaSet=atlas-y36f67-shard-0&authSource=admin&retryWrites=true&w=majority"
 client = MongoClient(uri)
 db = client["wel"]
@@ -32,6 +32,11 @@ def update_cell():
         upsert=True
     )
     return jsonify({"status": "success"})
+
+@app.route('/delete-all', methods=['POST'])
+def delete_all():
+    collection.delete_many({})
+    return jsonify({"status": "all_deleted"})
 
 if __name__ == '__main__':
     app.run(debug=True)
