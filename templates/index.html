@@ -22,6 +22,13 @@
 
     <div class="p-4 max-w-6xl mx-auto">
         <h1 class="text-2xl font-bold mb-4 text-center">📊 Flask Spreadsheet</h1>
+
+        <div class="flex justify-between mb-4">
+            <button onclick="deleteAll()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                🗑️ Delete All Cells
+            </button>
+        </div>
+
         <div class="overflow-auto">
             <table id="spreadsheet" class="table-fixed border-collapse w-full bg-white"></table>
         </div>
@@ -52,13 +59,17 @@
                         td.dataset.cellId = cellId;
                         td.textContent = data[cellId] || "";
 
-                        td.addEventListener("blur", () => {
-                            const value = td.textContent;
-                            fetch("/update-cell", {
-                                method: "POST",
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ cell_id: cellId, value: value })
-                            });
+                        let saveTimeout;
+                        td.addEventListener("input", () => {
+                            clearTimeout(saveTimeout);
+                            saveTimeout = setTimeout(() => {
+                                const value = td.textContent;
+                                fetch("/update-cell", {
+                                    method: "POST",
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ cell_id: cellId, value: value })
+                                });
+                            }, 1000);
                         });
                     }
 
@@ -66,6 +77,16 @@
                 }
                 spreadsheet.appendChild(tr);
             }
+        }
+
+        function deleteAll() {
+            fetch('/delete-all', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === "all_deleted") {
+                        createGrid();
+                    }
+                });
         }
 
         window.onload = () => {
