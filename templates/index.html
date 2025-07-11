@@ -173,12 +173,22 @@
 
         function addRow() {
             rows++;
-            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
+            saveMeta();
+            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data.cells));
         }
 
         function addColumn() {
             columns++;
-            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
+            saveMeta();
+            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data.cells));
+        }
+
+        function saveMeta() {
+            fetch("/update-meta", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rows: rows, columns: columns })
+            });
         }
 
         function showContextMenu(x, y) {
@@ -197,7 +207,13 @@
         window.addEventListener("click", () => document.getElementById("context-menu").classList.add("hidden"));
 
         window.onload = () => {
-            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
+            fetch("/load-cells")
+                .then(res => res.json())
+                .then(data => {
+                    rows = data.rows;
+                    columns = data.columns;
+                    createGrid(data.cells);
+                });
         }
     </script>
 </body>
