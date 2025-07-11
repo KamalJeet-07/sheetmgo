@@ -11,6 +11,10 @@
             height: 40px;
             border: 1px solid #ccc;
             text-align: center;
+            cursor: pointer;
+        }
+        td.selected {
+            background-color: #cfeafe;
         }
         td:focus {
             outline: 2px solid #3b82f6;
@@ -23,9 +27,15 @@
     <div class="p-4 max-w-6xl mx-auto">
         <h1 class="text-2xl font-bold mb-4 text-center">📊 Flask Spreadsheet</h1>
 
-        <div class="flex justify-between mb-4">
+        <div class="flex justify-between mb-4 gap-4">
             <button onclick="deleteAll()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
                 🗑️ Delete All Cells
+            </button>
+            <button onclick="addRow()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                ➕ Add Row
+            </button>
+            <button onclick="addColumn()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                ➕ Add Column
             </button>
         </div>
 
@@ -35,14 +45,15 @@
     </div>
 
     <script>
-        const columns = 10;
-        const rows = 10;
+        let columns = 10;
+        let rows = 10;
         const spreadsheet = document.getElementById("spreadsheet");
 
-        const columnHeaders = [''].concat([...Array(columns)].map((_, i) => String.fromCharCode(65 + i)));
+        const getHeaders = () => [''].concat([...Array(columns)].map((_, i) => String.fromCharCode(65 + i)));
 
         function createGrid(data = {}) {
             spreadsheet.innerHTML = '';
+            const columnHeaders = getHeaders();
 
             for (let r = 0; r <= rows; r++) {
                 const tr = document.createElement("tr");
@@ -59,6 +70,8 @@
                         td.dataset.cellId = cellId;
                         td.textContent = data[cellId] || "";
 
+                        td.addEventListener("mousedown", () => td.classList.toggle("selected"));
+
                         let saveTimeout;
                         td.addEventListener("input", () => {
                             clearTimeout(saveTimeout);
@@ -72,7 +85,6 @@
                             }, 1000);
                         });
                     }
-
                     tr.appendChild(td);
                 }
                 spreadsheet.appendChild(tr);
@@ -87,6 +99,20 @@
                         createGrid();
                     }
                 });
+        }
+
+        function addRow() {
+            rows++;
+            fetch("/load-cells")
+                .then(res => res.json())
+                .then(data => createGrid(data));
+        }
+
+        function addColumn() {
+            columns++;
+            fetch("/load-cells")
+                .then(res => res.json())
+                .then(data => createGrid(data));
         }
 
         window.onload = () => {
