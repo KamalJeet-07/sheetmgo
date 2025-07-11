@@ -5,6 +5,7 @@
     <title>Flask Spreadsheet</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.js"></script>
     <style>
         td {
             min-width: 80px;
@@ -12,6 +13,8 @@
             border: 1px solid #ccc;
             text-align: center;
             cursor: pointer;
+            resize: both;
+            overflow: auto;
         }
         td.selected {
             background-color: #cfeafe;
@@ -20,6 +23,8 @@
             outline: 2px solid #3b82f6;
             background-color: #eef6ff;
         }
+        .bold { font-weight: bold; }
+        .italic { font-style: italic; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -27,16 +32,13 @@
     <div class="p-4 max-w-6xl mx-auto">
         <h1 class="text-2xl font-bold mb-4 text-center">📊 Flask Spreadsheet</h1>
 
-        <div class="flex justify-between mb-4 gap-4">
-            <button onclick="deleteAll()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-                🗑️ Delete All Cells
-            </button>
-            <button onclick="addRow()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                ➕ Add Row
-            </button>
-            <button onclick="addColumn()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                ➕ Add Column
-            </button>
+        <div class="flex flex-wrap justify-between gap-4 mb-4">
+            <button onclick="deleteAll()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">🗑️ Delete All</button>
+            <button onclick="addRow()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">➕ Add Row</button>
+            <button onclick="addColumn()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">➕ Add Column</button>
+            <button onclick="undo()" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">↩️ Undo</button>
+            <button onclick="redo()" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800">↪️ Redo</button>
+            <button onclick="window.location='/export'" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">📤 Export CSV</button>
         </div>
 
         <div class="overflow-auto">
@@ -44,10 +46,18 @@
         </div>
     </div>
 
+    <menu id="context-menu" class="hidden absolute bg-white shadow-lg border z-50">
+        <button onclick="applyStyle('bold')" class="block px-4 py-2 w-full text-left hover:bg-gray-100">Bold</button>
+        <button onclick="applyStyle('italic')" class="block px-4 py-2 w-full text-left hover:bg-gray-100">Italic</button>
+    </menu>
+
     <script>
         let columns = 10;
         let rows = 10;
         const spreadsheet = document.getElementById("spreadsheet");
+        const history = [];
+        const future = [];
+        let contextCell = null;
 
         const getHeaders = () => [''].concat([...Array(columns)].map((_, i) => String.fromCharCode(65 + i)));
 
@@ -60,30 +70,34 @@
                 for (let c = 0; c <= columns; c++) {
                     const td = document.createElement(r === 0 || c === 0 ? "th" : "td");
 
-                    if (r === 0 && c > 0) {
-                        td.textContent = columnHeaders[c];
-                    } else if (c === 0 && r > 0) {
-                        td.textContent = r;
-                    } else if (r > 0 && c > 0) {
+                    if (r === 0 && c > 0) td.textContent = columnHeaders[c];
+                    else if (c === 0 && r > 0) td.textContent = r;
+                    else if (r > 0 && c > 0) {
                         const cellId = columnHeaders[c] + r;
                         td.contentEditable = true;
                         td.dataset.cellId = cellId;
                         td.textContent = data[cellId] || "";
 
-                        td.addEventListener("mousedown", () => td.classList.toggle("selected"));
+                        td.addEventListener("contextmenu", e => {
+                            e.preventDefault();
+                            contextCell = td;
+                            showContextMenu(e.pageX, e.pageY);
+                        });
 
-                        let saveTimeout;
                         td.addEventListener("input", () => {
-                            clearTimeout(saveTimeout);
-                            saveTimeout = setTimeout(() => {
+                            clearTimeout(td.saveTimeout);
+                            td.saveTimeout = setTimeout(() => {
                                 const value = td.textContent;
+                                saveToHistory();
                                 fetch("/update-cell", {
                                     method: "POST",
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ cell_id: cellId, value: value })
                                 });
-                            }, 1000);
+                            }, 500);
                         });
+
+                        td.addEventListener("blur", () => evaluateFormulas());
                     }
                     tr.appendChild(td);
                 }
@@ -91,34 +105,99 @@
             }
         }
 
+        function getCellValue(cellId) {
+            const td = document.querySelector(`[data-cell-id="${cellId}"]`);
+            if (!td) return 0;
+            const val = td.textContent;
+            if (val.startsWith('=')) return evaluateFormula(val);
+            return parseFloat(val) || 0;
+        }
+
+        function evaluateFormula(formula) {
+            try {
+                const expr = formula.slice(1).replace(/[A-Z][0-9]+/g, m => getCellValue(m));
+                return math.evaluate(expr);
+            } catch {
+                return "#ERR";
+            }
+        }
+
+        function evaluateFormulas() {
+            document.querySelectorAll('[data-cell-id]').forEach(td => {
+                const val = td.textContent;
+                if (val.startsWith('=')) {
+                    const result = evaluateFormula(val);
+                    td.innerText = result;
+                }
+            });
+        }
+
+        function saveToHistory() {
+            const snapshot = {};
+            document.querySelectorAll('[data-cell-id]').forEach(td => {
+                snapshot[td.dataset.cellId] = td.textContent;
+            });
+            history.push(snapshot);
+            future.length = 0;
+        }
+
+        function undo() {
+            if (!history.length) return;
+            const current = {};
+            document.querySelectorAll('[data-cell-id]').forEach(td => {
+                current[td.dataset.cellId] = td.textContent;
+            });
+            future.push(current);
+            const prev = history.pop();
+            Object.entries(prev).forEach(([id, val]) => {
+                const td = document.querySelector(`[data-cell-id="${id}"]`);
+                if (td) td.textContent = val;
+            });
+        }
+
+        function redo() {
+            if (!future.length) return;
+            const snapshot = future.pop();
+            saveToHistory();
+            Object.entries(snapshot).forEach(([id, val]) => {
+                const td = document.querySelector(`[data-cell-id="${id}"]`);
+                if (td) td.textContent = val;
+            });
+        }
+
         function deleteAll() {
             fetch('/delete-all', { method: 'POST' })
                 .then(res => res.json())
-                .then(data => {
-                    if (data.status === "all_deleted") {
-                        createGrid();
-                    }
-                });
+                .then(data => data.status === "all_deleted" && createGrid());
         }
 
         function addRow() {
             rows++;
-            fetch("/load-cells")
-                .then(res => res.json())
-                .then(data => createGrid(data));
+            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
         }
 
         function addColumn() {
             columns++;
-            fetch("/load-cells")
-                .then(res => res.json())
-                .then(data => createGrid(data));
+            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
         }
 
+        function showContextMenu(x, y) {
+            const menu = document.getElementById("context-menu");
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            menu.classList.remove("hidden");
+        }
+
+        function applyStyle(style) {
+            if (!contextCell) return;
+            contextCell.classList.toggle(style);
+            document.getElementById("context-menu").classList.add("hidden");
+        }
+
+        window.addEventListener("click", () => document.getElementById("context-menu").classList.add("hidden"));
+
         window.onload = () => {
-            fetch("/load-cells")
-                .then(res => res.json())
-                .then(data => createGrid(data));
+            fetch("/load-cells").then(res => res.json()).then(data => createGrid(data));
         }
     </script>
 </body>
